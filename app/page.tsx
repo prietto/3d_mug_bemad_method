@@ -1,11 +1,11 @@
 'use client'
 
-import React, { Suspense, useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import Navigation from './components/Navigation'
 import MinimalHeader from './components/MinimalHeader'
 import SplitScreenLayout from './components/SplitScreenLayout'
 import Footer from './components/Footer'
-import MugDesigner from './components/MugDesigner'
+import SimpleMugTest from './components/SimpleMugTest'
 import LeadCaptureForm from './components/LeadCaptureForm'
 import { useAnalyticsIntegration } from '@/lib/hooks/useAnalyticsIntegration'
 import { Design, CreateLeadRequest } from '@/lib/types'
@@ -109,13 +109,7 @@ export default function Home() {
 
       <main role="main" className="flex-grow">
         <SplitScreenLayout
-          leftComponent={
-            <MugDesigner
-              showControls={true}
-              isConstrainedViewport={true}
-              className="h-full"
-            />
-          }
+          leftComponent={<SimpleMugTest />}
           rightComponent={
             <LeadCaptureForm
               design={currentDesign}
