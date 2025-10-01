@@ -1,22 +1,77 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Canvas, extend } from '@react-three/fiber'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Canvas, extend, useLoader } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { Text } from 'troika-three-text'
+import * as THREE from 'three'
 
 // Extend R3F to recognize Text component
 extend({ Text })
+
+// Create curved plane geometry for wrapping image around cylinder
+function createCurvedPlaneGeometry(width: number, height: number, curveSegments: number = 32) {
+  const geometry = new THREE.BufferGeometry()
+  const vertices: number[] = []
+  const uvs: number[] = []
+  const indices: number[] = []
+
+  const radius = 1.23
+  const arcAngle = Math.PI * 0.5 // 90 degrees
+
+  // Create vertices
+  for (let i = 0; i <= curveSegments; i++) {
+    for (let j = 0; j <= 1; j++) {
+      const u = i / curveSegments
+      const v = j
+
+      // Calculate angle for this vertex
+      const angle = (u - 0.5) * arcAngle
+      const x = Math.sin(angle) * radius
+      const z = Math.cos(angle) * radius
+      const y = (v - 0.5) * height
+
+      vertices.push(x, y, z)
+      uvs.push(u, v)
+    }
+  }
+
+  // Create indices
+  for (let i = 0; i < curveSegments; i++) {
+    const a = i * 2
+    const b = a + 1
+    const c = a + 2
+    const d = a + 3
+
+    indices.push(a, b, c)
+    indices.push(b, d, c)
+  }
+
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+
+  return geometry
+}
 
 interface MugProps {
   color: string
   text: string
   textColor: string
   textSize: number
+  imageUrl: string | null
+  imageScale: number
+  imagePositionY: number
 }
 
-function Mug({ color, text, textColor, textSize }: MugProps) {
+function Mug({ color, text, textColor, textSize, imageUrl, imageScale, imagePositionY }: MugProps) {
   const textRef = useRef<Text>(null)
+  const texture = imageUrl ? useLoader(THREE.TextureLoader, imageUrl) : null
+
+  const curvedGeometry = useMemo(() => {
+    return createCurvedPlaneGeometry(2, imageScale, 48)
+  }, [imageScale])
 
   useEffect(() => {
     if (textRef.current) {
@@ -37,6 +92,19 @@ function Mug({ color, text, textColor, textSize }: MugProps) {
         <torusGeometry args={[0.4, 0.15, 16, 32]} />
         <meshStandardMaterial color={color} />
       </mesh>
+
+      {/* Image/Logo on mug - curved using custom geometry */}
+      {texture && (
+        <mesh position={[0, imagePositionY, 0]} geometry={curvedGeometry}>
+          <meshBasicMaterial
+            map={texture}
+            transparent={true}
+            alphaTest={0.1}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
 
       {/* Text on mug */}
       {text && (
@@ -62,6 +130,10 @@ export default function SimpleMugTest() {
   const [customText, setCustomText] = useState('')
   const [textColor, setTextColor] = useState('#ffffff')
   const [textSize, setTextSize] = useState(1.0)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [imageScale, setImageScale] = useState(1.0)
+  const [imagePositionY, setImagePositionY] = useState(0.5)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const colors = [
     { name: 'Black', value: '#000000' },
@@ -83,6 +155,37 @@ export default function SimpleMugTest() {
     setMugColor(DEFAULT_COLOR)
   }
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file (PNG, JPG, etc.)')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image must be smaller than 5MB')
+      return
+    }
+
+    // Create object URL for the image
+    const url = URL.createObjectURL(file)
+    setImageUrl(url)
+  }
+
+  const handleRemoveImage = () => {
+    if (imageUrl) {
+      URL.revokeObjectURL(imageUrl)
+      setImageUrl(null)
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '600px', background: '#f3f4f6', display: 'flex', flexDirection: 'column' }}>
       {/* 3D Canvas */}
@@ -90,7 +193,15 @@ export default function SimpleMugTest() {
         <Canvas camera={{ position: [3, 2, 5], fov: 50 }}>
           <ambientLight intensity={0.5} />
           <directionalLight position={[5, 5, 5]} intensity={1} />
-          <Mug color={mugColor} text={customText} textColor={textColor} textSize={textSize} />
+          <Mug
+            color={mugColor}
+            text={customText}
+            textColor={textColor}
+            textSize={textSize}
+            imageUrl={imageUrl}
+            imageScale={imageScale}
+            imagePositionY={imagePositionY}
+          />
           <OrbitControls />
         </Canvas>
       </div>
@@ -212,6 +323,128 @@ export default function SimpleMugTest() {
                     title={color.name}
                   />
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Image Upload Section */}
+      <div style={{ padding: '20px', background: 'white', borderTop: '1px solid #e5e7eb' }}>
+        <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600' }}>Upload Image/Logo</h3>
+
+        {!imageUrl ? (
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              style={{ display: 'none' }}
+              id="image-upload"
+            />
+            <label
+              htmlFor="image-upload"
+              style={{
+                display: 'inline-block',
+                padding: '12px 24px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#ffffff',
+                background: '#3b82f6',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+            >
+              Choose Image
+            </label>
+            <p style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
+              PNG, JPG, or GIF (max 5MB)
+            </p>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <img
+                src={imageUrl}
+                alt="Preview"
+                style={{
+                  width: '80px',
+                  height: '80px',
+                  objectFit: 'contain',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '6px',
+                  background: '#f9fafb'
+                }}
+              />
+              <button
+                onClick={handleRemoveImage}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#ef4444',
+                  background: 'transparent',
+                  border: '1px solid #ef4444',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#ef4444'
+                  e.currentTarget.style.color = '#ffffff'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = '#ef4444'
+                }}
+              >
+                Remove Image
+              </button>
+            </div>
+
+            {/* Image Controls */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Scale Control */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
+                  Size: {imageScale.toFixed(1)}x
+                </label>
+                <input
+                  type="range"
+                  min="0.3"
+                  max="2.0"
+                  step="0.1"
+                  value={imageScale}
+                  onChange={(e) => setImageScale(parseFloat(e.target.value))}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                  }}
+                />
+              </div>
+
+              {/* Position Y Control */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
+                  Position: {imagePositionY.toFixed(1)}
+                </label>
+                <input
+                  type="range"
+                  min="-0.8"
+                  max="0.8"
+                  step="0.1"
+                  value={imagePositionY}
+                  onChange={(e) => setImagePositionY(parseFloat(e.target.value))}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                  }}
+                />
               </div>
             </div>
           </div>
