@@ -2,12 +2,41 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { Canvas, extend, useLoader } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
-import { Text } from 'troika-three-text'
+import { OrbitControls, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 
-// Extend R3F to recognize Text component
-extend({ Text })
+// Create text texture from canvas
+function createTextTexture(text: string, color: string, fontSize: number = 64): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')!
+
+  // Set font first to measure text
+  context.font = `bold ${fontSize}px Arial, sans-serif`
+
+  // Measure text width
+  const metrics = context.measureText(text)
+  const textWidth = metrics.width
+
+  // Set canvas size based on text width with padding
+  const padding = 40
+  canvas.width = Math.max(512, Math.ceil(textWidth + padding * 2))
+  canvas.height = 256
+
+  // Re-apply font after canvas resize (canvas clears on resize)
+  context.font = `bold ${fontSize}px Arial, sans-serif`
+  context.fillStyle = color
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+
+  // Draw text
+  context.fillText(text, canvas.width / 2, canvas.height / 2)
+
+  // Create texture
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.needsUpdate = true
+
+  return texture
+}
 
 // Create curved plane geometry for wrapping image around cylinder
 function createCurvedPlaneGeometry(width: number, height: number, curveSegments: number = 32) {
@@ -66,38 +95,50 @@ interface MugProps {
 }
 
 function Mug({ color, text, textColor, textSize, imageUrl, imageScale, imagePositionY }: MugProps) {
-  const textRef = useRef<Text>(null)
-  const texture = imageUrl ? useLoader(THREE.TextureLoader, imageUrl) : null
+  const imageTexture = imageUrl ? useLoader(THREE.TextureLoader, imageUrl) : null
 
-  const curvedGeometry = useMemo(() => {
+  const imageCurvedGeometry = useMemo(() => {
     return createCurvedPlaneGeometry(2, imageScale, 48)
   }, [imageScale])
 
-  useEffect(() => {
-    if (textRef.current) {
-      textRef.current.sync()
-    }
+  const textCurvedGeometry = useMemo(() => {
+    return createCurvedPlaneGeometry(2, 0.6 * textSize, 48)
+  }, [textSize])
+
+  const textTexture = useMemo(() => {
+    if (!text) return null
+    return createTextTexture(text, textColor, 64 * textSize)
   }, [text, textColor, textSize])
 
   return (
-    <group position={[0, 0, 0]}>
+    <group position={[0, 0, 0]} castShadow receiveShadow>
       {/* Mug body */}
-      <mesh>
+      <mesh castShadow receiveShadow>
         <cylinderGeometry args={[1.2, 1.0, 2.5, 32]} />
-        <meshStandardMaterial color={color} />
+        <meshStandardMaterial
+          color={color}
+          roughness={0.3}
+          metalness={0.1}
+          envMapIntensity={0.5}
+        />
       </mesh>
 
       {/* Handle */}
-      <mesh position={[1.4, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+      <mesh position={[1.4, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
         <torusGeometry args={[0.4, 0.15, 16, 32]} />
-        <meshStandardMaterial color={color} />
+        <meshStandardMaterial
+          color={color}
+          roughness={0.3}
+          metalness={0.1}
+          envMapIntensity={0.5}
+        />
       </mesh>
 
-      {/* Image/Logo on mug - curved using custom geometry */}
-      {texture && (
-        <mesh position={[0, imagePositionY, 0]} geometry={curvedGeometry}>
+      {/* Text on mug - curved using custom geometry */}
+      {textTexture && (
+        <mesh position={[0, imageUrl ? -0.5 : 0, 0]} geometry={textCurvedGeometry}>
           <meshBasicMaterial
-            map={texture}
+            map={textTexture}
             transparent={true}
             alphaTest={0.1}
             side={THREE.DoubleSide}
@@ -106,19 +147,17 @@ function Mug({ color, text, textColor, textSize, imageUrl, imageScale, imagePosi
         </mesh>
       )}
 
-      {/* Text on mug */}
-      {text && (
-        <primitive
-          ref={textRef}
-          object={new Text()}
-          text={text}
-          fontSize={0.5 * textSize}
-          color={textColor}
-          anchorX="center"
-          anchorY="middle"
-          position={[0, 0, 1.21]}
-          maxWidth={2.2}
-        />
+      {/* Image/Logo on mug - curved using custom geometry */}
+      {imageTexture && (
+        <mesh position={[0, imagePositionY, 0]} geometry={imageCurvedGeometry}>
+          <meshBasicMaterial
+            map={imageTexture}
+            transparent={true}
+            alphaTest={0.1}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
       )}
     </group>
   )
@@ -189,10 +228,48 @@ export default function SimpleMugTest() {
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '600px', background: '#f3f4f6', display: 'flex', flexDirection: 'column' }}>
       {/* 3D Canvas */}
-      <div style={{ flex: 1, minHeight: '400px' }}>
-        <Canvas camera={{ position: [3, 2, 5], fov: 50 }}>
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[5, 5, 5]} intensity={1} />
+      <div style={{
+        flexShrink: 0,
+        height: '400px',
+        background: 'linear-gradient(to bottom, #e0f2fe 0%, #f3f4f6 50%, #ffffff 100%)'
+      }}>
+        <Canvas
+          camera={{ position: [3, 2, 5], fov: 50 }}
+          shadows
+          gl={{ antialias: true, alpha: true }}
+        >
+          {/* Environment for realistic reflections */}
+          <Environment preset="studio" />
+
+          {/* Improved lighting setup */}
+          <ambientLight intensity={0.4} />
+          <directionalLight
+            position={[5, 5, 5]}
+            intensity={1}
+            castShadow
+            shadow-mapSize-width={2048}
+            shadow-mapSize-height={2048}
+            shadow-camera-far={50}
+            shadow-camera-left={-10}
+            shadow-camera-right={10}
+            shadow-camera-top={10}
+            shadow-camera-bottom={-10}
+          />
+          <directionalLight position={[-3, 3, -3]} intensity={0.4} />
+          <spotLight
+            position={[0, 5, 0]}
+            angle={0.3}
+            penumbra={1}
+            intensity={0.6}
+            castShadow
+          />
+
+          {/* Ground plane for shadows */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.3, 0]} receiveShadow>
+            <planeGeometry args={[20, 20]} />
+            <shadowMaterial opacity={0.3} />
+          </mesh>
+
           <Mug
             color={mugColor}
             text={customText}
@@ -202,12 +279,21 @@ export default function SimpleMugTest() {
             imageScale={imageScale}
             imagePositionY={imagePositionY}
           />
-          <OrbitControls />
+          <OrbitControls
+            enablePan={false}
+            minDistance={3}
+            maxDistance={8}
+            maxPolarAngle={Math.PI / 2}
+            enableDamping
+            dampingFactor={0.05}
+          />
         </Canvas>
       </div>
 
-      {/* Color Picker */}
-      <div style={{ padding: '20px', background: 'white', borderTop: '1px solid #e5e7eb' }}>
+      {/* Controls Panel - Scrollable */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {/* Color Picker */}
+        <div style={{ padding: '20px', background: 'white', borderTop: '1px solid #e5e7eb' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>Mug Color</h3>
           <button
@@ -449,6 +535,7 @@ export default function SimpleMugTest() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   )
