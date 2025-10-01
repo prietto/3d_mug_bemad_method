@@ -1,0 +1,734 @@
+/**
+ * 3D Performance Monitoring Tests
+ * Story 3.5: Performance Monitoring and System Health
+ * 
+ * Tests for PERF-001: 3D Performance Degradation on Mobile Devices mitigation
+ */
+
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import {
+  DeviceCapabilityDetector,
+  PerformanceQualityManager,
+  FPSMonitor,
+  Performance3DManager,
+  DeviceCapability,
+  PerformanceMetrics
+} from './performance';
+
+// Mock WebGL2RenderingContext for instanceof checks
+class MockWebGL2RenderingContext {
+  getParameter = vi.fn();
+  getExtension = vi.fn();
+  
+  // WebGL constants
+  MAX_TEXTURE_SIZE = 34024;
+  UNMASKED_RENDERER_WEBGL = 37446;
+  UNMASKED_VENDOR_WEBGL = 37445;
+}
+
+// Make it available globally for instanceof checks
+Object.defineProperty(global, 'WebGL2RenderingContext', {
+  value: MockWebGL2RenderingContext,
+  writable: true
+});
+
+// Mock WebGL and DOM APIs
+const mockWebGLContext = new MockWebGL2RenderingContext();
+
+const mockDebugInfo = {
+  UNMASKED_RENDERER_WEBGL: 37446,
+  UNMASKED_VENDOR_WEBGL: 37445
+};
+
+const mockCanvas = {
+  getContext: vi.fn(() => mockWebGLContext),
+  remove: vi.fn()
+};
+
+// Mock global objects
+Object.defineProperty(global, 'document', {
+  value: {
+    createElement: vi.fn(() => mockCanvas)
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'navigator', {
+  value: {
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    maxTouchPoints: 0
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'window', {
+  value: {
+    devicePixelRatio: 1
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'performance', {
+  value: {
+    now: vi.fn(() => Date.now()),
+    memory: {
+      usedJSHeapSize: 50 * 1024 * 1024 // 50MB
+    }
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'crypto', {
+  value: {
+    randomUUID: vi.fn(() => 'test-uuid-123')
+  },
+  writable: true
+});
+
+describe('DeviceCapabilityDetector', () => {
+  let detector: DeviceCapabilityDetector;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    detector = new DeviceCapabilityDetector();
+  });
+
+  afterEach(() => {
+    detector.cleanup();
+  });
+
+  it('should detect capabilities for high-end desktop GPU', () => {
+    // Mock high-end GPU - need to reset the detector to pick up new mocks
+    mockWebGLContext.getParameter.mockImplementation((param: number) => {
+      if (param === mockDebugInfo.UNMASKED_RENDERER_WEBGL) {
+        return 'NVIDIA GeForce RTX 4080';
+      }
+      if (param === mockWebGLContext.MAX_TEXTURE_SIZE) {
+        return 8192;
+      }
+      return null;
+    });
+
+    mockWebGLContext.getExtension.mockReturnValue(mockDebugInfo);
+    
+    // Create a new detector to pick up the mocks
+    detector.cleanup();
+    detector = new DeviceCapabilityDetector();
+
+    const capability = detector.detectCapabilities();
+
+    expect(capability.gpuTier).toBe(4);
+    expect(capability.isMobile).toBe(false);
+    expect(capability.memoryGB).toBeGreaterThanOrEqual(8);
+    expect(capability.maxTextureSize).toBe(8192);
+    expect(capability.renderer).toBe('NVIDIA GeForce RTX 4080');
+  });
+
+  it('should detect capabilities for mobile device', () => {
+    // Mock mobile user agent
+    Object.defineProperty(global.navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+      configurable: true
+    });
+
+    // Mock mobile GPU
+    mockWebGLContext.getParameter.mockImplementation((param: number) => {
+      if (param === mockDebugInfo.UNMASKED_RENDERER_WEBGL) {
+        return 'Apple A14 GPU';
+      }
+      if (param === 34024) { // MAX_TEXTURE_SIZE
+        return 4096;
+      }
+      return null;
+    });
+
+    detector = new DeviceCapabilityDetector();
+    const capability = detector.detectCapabilities();
+
+    expect(capability.isMobile).toBe(true);
+    expect(capability.gpuTier).toBeGreaterThanOrEqual(1);
+    expect(capability.memoryGB).toBeLessThanOrEqual(6);
+  });
+
+  it('should handle WebGL initialization failure', () => {
+    // Mock WebGL failure by returning null from getContext
+    const originalGetContext = mockCanvas.getContext;
+    mockCanvas.getContext = vi.fn().mockReturnValue(null);
+
+    detector = new DeviceCapabilityDetector();
+    const capability = detector.detectCapabilities();
+
+    expect(capability.gpuTier).toBe(0);
+    expect(capability.renderer).toBe('unknown');
+    expect(capability.maxTextureSize).toBe(512);
+
+    // Restore original mock
+    mockCanvas.getContext = originalGetContext;
+  });
+
+  it('should detect low-end integrated graphics', () => {
+    // Mock Intel integrated graphics
+    mockWebGLContext.getParameter.mockImplementation((param: number) => {
+      if (param === mockDebugInfo.UNMASKED_RENDERER_WEBGL) {
+        return 'Intel(R) HD Graphics 620';
+      }
+      if (param === mockWebGLContext.MAX_TEXTURE_SIZE) {
+        return 2048;
+      }
+      return null;
+    });
+
+    // Create a new detector to pick up the mocks
+    detector.cleanup();
+    detector = new DeviceCapabilityDetector();
+
+    const capability = detector.detectCapabilities();
+
+    expect(capability.gpuTier).toBe(2);
+    expect(capability.memoryGB).toBeLessThanOrEqual(4);
+    expect(capability.renderer).toBe('Intel(R) HD Graphics 620');
+  });
+
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import {
+  DeviceCapabilityDetector,
+  PerformanceQualityManager,
+  FPSMonitor,
+  Performance3DManager,
+  DeviceCapability,
+  PerformanceMetrics
+} from './performance';
+
+// Mock WebGL2RenderingContext for instanceof checks
+class MockWebGL2RenderingContext {
+  getParameter = vi.fn();
+  getExtension = vi.fn();
+  
+  // WebGL constants
+  MAX_TEXTURE_SIZE = 34024;
+  UNMASKED_RENDERER_WEBGL = 37446;
+  UNMASKED_VENDOR_WEBGL = 37445;
+}
+
+// Make it available globally for instanceof checks
+Object.defineProperty(global, 'WebGL2RenderingContext', {
+  value: MockWebGL2RenderingContext,
+  writable: true
+});
+
+// Mock WebGL and DOM APIs
+const mockWebGLContext = new MockWebGL2RenderingContext();
+
+const mockDebugInfo = {
+  UNMASKED_RENDERER_WEBGL: 37446,
+  UNMASKED_VENDOR_WEBGL: 37445
+};
+
+const mockCanvas = {
+  getContext: vi.fn(() => mockWebGLContext),
+  remove: vi.fn()
+};
+
+// Mock global objects
+Object.defineProperty(global, 'document', {
+  value: {
+    createElement: vi.fn(() => mockCanvas)
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'navigator', {
+  value: {
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    maxTouchPoints: 0
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'window', {
+  value: {
+    devicePixelRatio: 1
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'performance', {
+  value: {
+    now: vi.fn(() => Date.now()),
+    memory: {
+      usedJSHeapSize: 50 * 1024 * 1024 // 50MB
+    }
+  },
+  writable: true
+});
+
+Object.defineProperty(global, 'crypto', {
+  value: {
+    randomUUID: vi.fn(() => 'test-uuid-123')
+  },
+  writable: true
+});
+
+describe('DeviceCapabilityDetector', () => {
+  let detector: DeviceCapabilityDetector;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    detector = new DeviceCapabilityDetector();
+  });
+
+  afterEach(() => {
+    detector.cleanup();
+  });
+
+  it('should detect capabilities for high-end desktop GPU', () => {
+    // Mock high-end GPU - need to reset the detector to pick up new mocks
+    mockWebGLContext.getParameter.mockImplementation((param: number) => {
+      if (param === mockDebugInfo.UNMASKED_RENDERER_WEBGL) {
+        return 'NVIDIA GeForce RTX 4080';
+      }
+      if (param === mockWebGLContext.MAX_TEXTURE_SIZE) {
+        return 8192;
+      }
+      return null;
+    });
+
+    mockWebGLContext.getExtension.mockReturnValue(mockDebugInfo);
+    
+    // Create a new detector to pick up the mocks
+    detector.cleanup();
+    detector = new DeviceCapabilityDetector();
+
+    const capability = detector.detectCapabilities();
+
+    expect(capability.gpuTier).toBe(4);
+    expect(capability.isMobile).toBe(false);
+    expect(capability.memoryGB).toBeGreaterThanOrEqual(8);
+    expect(capability.maxTextureSize).toBe(8192);
+    expect(capability.renderer).toBe('NVIDIA GeForce RTX 4080');
+  });
+
+  it('should detect capabilities for mobile device', () => {
+    // Mock mobile user agent
+    Object.defineProperty(global.navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+      configurable: true
+    });
+
+    // Mock mobile GPU
+    mockWebGLContext.getParameter.mockImplementation((param: number) => {
+      if (param === mockDebugInfo.UNMASKED_RENDERER_WEBGL) {
+        return 'Apple A14 GPU';
+      }
+      if (param === 34024) { // MAX_TEXTURE_SIZE
+        return 4096;
+      }
+      return null;
+    });
+
+    detector = new DeviceCapabilityDetector();
+    const capability = detector.detectCapabilities();
+
+    expect(capability.isMobile).toBe(true);
+    expect(capability.gpuTier).toBeGreaterThanOrEqual(1);
+    expect(capability.memoryGB).toBeLessThanOrEqual(6);
+  });
+
+  it('should handle WebGL initialization failure', () => {
+    // Mock WebGL failure by returning null from getContext
+    const originalGetContext = mockCanvas.getContext;
+    mockCanvas.getContext = vi.fn().mockReturnValue(null);
+
+    detector = new DeviceCapabilityDetector();
+    const capability = detector.detectCapabilities();
+
+    expect(capability.gpuTier).toBe(0);
+    expect(capability.renderer).toBe('unknown');
+    expect(capability.maxTextureSize).toBe(512);
+
+    // Restore original mock
+    mockCanvas.getContext = originalGetContext;
+  });
+
+  it('should detect low-end integrated graphics', () => {
+    // Mock integrated graphics
+    mockWebGLContext.getParameter.mockImplementation((param: number) => {
+      if (param === mockDebugInfo.UNMASKED_RENDERER_WEBGL) {
+        return 'Intel HD Graphics 4000';
+      }
+      if (param === 34024) { // MAX_TEXTURE_SIZE
+        return 2048;
+      }
+      return null;
+    });
+
+    const capability = detector.detectCapabilities();
+
+    expect(capability.gpuTier).toBe(2);
+    expect(capability.memoryGB).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('PerformanceQualityManager', () => {
+  it('should set static fallback for very low-end mobile devices', () => {
+    const capability: DeviceCapability = {
+      renderer: 'PowerVR SGX 543',
+      gpuTier: 1,
+      memoryGB: 1,
+      isMobile: true,
+      webglVersion: 1,
+      maxTextureSize: 1024,
+      devicePixelRatio: 2
+    };
+
+    const manager = new PerformanceQualityManager(capability);
+    const settings = manager.getQualitySettings();
+
+    expect(settings.useStaticFallback).toBe(true);
+    expect(settings.targetFPS).toBe(15);
+    expect(settings.textureQuality).toBeLessThanOrEqual(0.25);
+  });
+
+  it('should adjust quality based on performance metrics', () => {
+    const capability: DeviceCapability = {
+      renderer: 'NVIDIA GeForce GTX 1060',
+      gpuTier: 3,
+      memoryGB: 6,
+      isMobile: false,
+      webglVersion: 2,
+      maxTextureSize: 4096,
+      devicePixelRatio: 1
+    };
+
+    const manager = new PerformanceQualityManager(capability);
+    const initialSettings = manager.getQualitySettings();
+
+    // Simulate poor performance
+    const poorMetrics: PerformanceMetrics = {
+      fps: 20, // Below target of 60
+      frameTime: 50,
+      memoryUsage: 100,
+      gpuUtilization: 90,
+      timestamp: Date.now()
+    };
+
+    // Need multiple samples for adjustment
+    for (let i = 0; i < 35; i++) {
+      manager.updatePerformance(poorMetrics);
+    }
+
+    const adjustedSettings = manager.getQualitySettings();
+    
+    // Quality should decrease due to poor performance
+    expect(adjustedSettings.textureQuality).toBeLessThanOrEqual(initialSettings.textureQuality);
+  });
+
+  it('should handle cooldown period correctly', () => {
+    const capability: DeviceCapability = {
+      renderer: 'Test GPU',
+      gpuTier: 2,
+      memoryGB: 4,
+      isMobile: false,
+      webglVersion: 1,
+      maxTextureSize: 2048,
+      devicePixelRatio: 1
+    };
+
+    const manager = new PerformanceQualityManager(capability);
+
+    const poorMetrics: PerformanceMetrics = {
+      fps: 15,
+      frameTime: 66,
+      memoryUsage: 100,
+      gpuUtilization: 95,
+      timestamp: Date.now()
+    };
+
+    // Trigger initial adjustment
+    for (let i = 0; i < 35; i++) {
+      manager.updatePerformance(poorMetrics);
+    }
+
+    const settingsAfterFirst = manager.getQualitySettings();
+
+    // During cooldown, should not adjust
+    for (let i = 0; i < 35; i++) {
+      const changed = manager.updatePerformance(poorMetrics);
+      if (i < 180) { // Cooldown period
+        expect(changed).toBe(false);
+      }
+    }
+  });
+
+  it('should not increase quality from static fallback automatically', () => {
+    const capability: DeviceCapability = {
+      renderer: 'Test GPU',
+      gpuTier: 0,
+      memoryGB: 1,
+      isMobile: true,
+      webglVersion: 1,
+      maxTextureSize: 512,
+      devicePixelRatio: 1
+    };
+
+    const manager = new PerformanceQualityManager(capability);
+    const settings = manager.getQualitySettings();
+    
+    expect(settings.useStaticFallback).toBe(true);
+
+    // Simulate excellent performance
+    const excellentMetrics: PerformanceMetrics = {
+      fps: 60,
+      frameTime: 16,
+      memoryUsage: 30,
+      gpuUtilization: 30,
+      timestamp: Date.now()
+    };
+
+    for (let i = 0; i < 35; i++) {
+      const changed = manager.updatePerformance(excellentMetrics);
+      expect(changed).toBe(false);
+    }
+
+    expect(manager.getQualitySettings().useStaticFallback).toBe(true);
+  });
+});
+
+describe('FPSMonitor', () => {
+  let monitor: FPSMonitor;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    monitor = new FPSMonitor();
+  });
+
+  it('should calculate FPS correctly', () => {
+    let currentTime = 0;
+    (performance.now as any).mockImplementation(() => {
+      return currentTime;
+    });
+
+    // Update several times with precise 60 FPS timing (16.67ms per frame)
+    for (let i = 0; i < 65; i++) { // Need enough frames to fill the rolling average
+      currentTime += 16.666666667; // More precise 60 FPS timing
+      const metrics = monitor.update();
+      if (i >= 60) { // After filling the rolling average buffer
+        expect(metrics.fps).toBeCloseTo(60, 0.1); // Allow 0.1 FPS tolerance
+        expect(metrics.frameTime).toBeCloseTo(16.67, 0.1);
+      }
+    }
+  });
+
+  it('should detect performance degradation', () => {
+    let currentTime = 0;
+    (performance.now as any).mockImplementation(() => {
+      return currentTime;
+    });
+
+    // Update several times with 30 FPS timing (33.33ms per frame)
+    for (let i = 0; i < 65; i++) {
+      currentTime += 33.333333333; // Precise 30 FPS timing
+      const metrics = monitor.update();
+      if (i >= 60) { // After filling the rolling average buffer
+        expect(metrics.fps).toBeCloseTo(30, 0.1);
+        expect(metrics.frameTime).toBeCloseTo(33.33, 0.1);
+        expect(metrics.gpuUtilization).toBeGreaterThan(100); // Over budget for 60fps target
+      }
+    }
+  });
+
+  it('should estimate memory usage', () => {
+    const metrics = monitor.update();
+    expect(metrics.memoryUsage).toBeGreaterThan(0);
+    expect(typeof metrics.memoryUsage).toBe('number');
+  });
+
+  it('should calculate battery impact for mobile devices', () => {
+    // Mock mobile user agent
+    Object.defineProperty(global.navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+      configurable: true
+    });
+
+    monitor = new FPSMonitor();
+    const metrics = monitor.update();
+
+    expect(metrics.batteryImpact).toBeDefined();
+    expect(typeof metrics.batteryImpact).toBe('number');
+    expect(metrics.batteryImpact).toBeGreaterThanOrEqual(0);
+    expect(metrics.batteryImpact).toBeLessThanOrEqual(1);
+  });
+
+  it('should not calculate battery impact for desktop', () => {
+    // Ensure desktop user agent
+    Object.defineProperty(global.navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      configurable: true
+    });
+
+    monitor = new FPSMonitor();
+    const metrics = monitor.update();
+
+    expect(metrics.batteryImpact).toBeUndefined();
+  });
+});
+
+describe('Performance3DManager', () => {
+  let manager: Performance3DManager;
+  let qualityChangeCallback: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    qualityChangeCallback = vi.fn();
+    manager = new Performance3DManager(qualityChangeCallback);
+  });
+
+  afterEach(() => {
+    manager.dispose();
+  });
+
+  it('should initialize with device capability and settings', () => {
+    const { capability, settings } = manager.initialize();
+
+    expect(capability).toBeDefined();
+    expect(capability.gpuTier).toBeGreaterThanOrEqual(0);
+    expect(settings).toBeDefined();
+    expect(typeof settings.textureQuality).toBe('number');
+    expect(typeof settings.targetFPS).toBe('number');
+  });
+
+  it('should update performance metrics each frame', () => {
+    let frameTime = 0;
+    (performance.now as any).mockImplementation(() => {
+      frameTime += 16.67;
+      return frameTime;
+    });
+
+    const metrics1 = manager.updateFrame();
+    const metrics2 = manager.updateFrame();
+
+    expect(metrics1.timestamp).toBeLessThan(metrics2.timestamp);
+    expect(typeof metrics1.fps).toBe('number');
+    expect(typeof metrics1.frameTime).toBe('number');
+  });
+
+  it('should trigger quality change callback when performance degrades', async () => {
+    // Simulate poor performance
+    let frameTime = 0;
+    (performance.now as any).mockImplementation(() => {
+      frameTime += 50; // 20 FPS
+      return frameTime;
+    });
+
+    // Update many frames to trigger adjustment
+    for (let i = 0; i < 200; i++) {
+      manager.updateFrame();
+    }
+
+    // Should eventually call quality change callback
+    expect(qualityChangeCallback).toHaveBeenCalled();
+  });
+
+  it('should allow manual quality level override', () => {
+    manager.forceQualityLevel('low');
+    let currentSettings = manager.getQualitySettings();
+
+    expect(currentSettings.textureQuality).toBe(0.25);
+    expect(currentSettings.shadowQuality).toBe(0);
+    expect(currentSettings.antiAliasing).toBe(false);
+    expect(currentSettings.useStaticFallback).toBe(false);
+
+    manager.forceQualityLevel('static');
+    currentSettings = manager.getQualitySettings();
+
+    expect(currentSettings.useStaticFallback).toBe(true);
+
+    manager.forceQualityLevel('high');
+    currentSettings = manager.getQualitySettings();
+
+    expect(currentSettings.textureQuality).toBe(1.0);
+    expect(currentSettings.shadowQuality).toBe(2);
+    expect(currentSettings.useStaticFallback).toBe(false); // Should be reset
+  });
+
+  it('should provide device capability information', () => {
+    const capability = manager.getDeviceCapability();
+
+    expect(capability.renderer).toBeDefined();
+    expect(typeof capability.gpuTier).toBe('number');
+    expect(typeof capability.isMobile).toBe('boolean');
+    expect(typeof capability.memoryGB).toBe('number');
+    expect(capability.webglVersion).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should handle cleanup properly', () => {
+    // Verify initial state
+    expect(manager.getDeviceCapability()).toBeDefined();
+
+    manager.dispose();
+
+    // Should not throw errors after disposal
+    expect(() => manager.getDeviceCapability()).not.toThrow();
+    
+    // Should still return valid capability info (cached)
+    const capabilityAfterDispose = manager.getDeviceCapability();
+    expect(capabilityAfterDispose).toBeDefined();
+  });
+});
+
+describe('Device Capability Edge Cases', () => {
+  it('should handle WebGL context creation errors gracefully', () => {
+    // Mock context creation failure
+    const failingCanvas = {
+      getContext: vi.fn().mockImplementation(() => {
+        throw new Error('WebGL not supported');
+      }),
+      remove: vi.fn()
+    };
+
+    Object.defineProperty(global.document, 'createElement', {
+      value: vi.fn(() => failingCanvas),
+      configurable: true
+    });
+
+    const detector = new DeviceCapabilityDetector();
+    const capability = detector.detectCapabilities();
+
+    expect(capability.gpuTier).toBe(0);
+    expect(capability.renderer).toBe('unknown');
+    
+    detector.cleanup();
+
+    // Restore original mock
+    Object.defineProperty(global.document, 'createElement', {
+      value: vi.fn(() => mockCanvas),
+      configurable: true
+    });
+  });
+
+  it('should handle missing WebGL debug extension', () => {
+    mockWebGLContext.getExtension.mockReturnValue(null);
+
+    const detector = new DeviceCapabilityDetector();
+    const capability = detector.detectCapabilities();
+
+    expect(capability.renderer).toBe('unknown');
+    expect(capability.gpuTier).toBeGreaterThanOrEqual(1);
+    
+    detector.cleanup();
+  });
+
+  it('should detect touch devices correctly', () => {
+    Object.defineProperty(global.navigator, 'maxTouchPoints', {
+      value: 5,
+      configurable: true
+    });
+
+    const detector = new DeviceCapabilityDetector();
+    const capability = detector.detectCapabilities();
+
+    expect(capability.isMobile).toBe(true);
+    
+    detector.cleanup();
+  });
+});
