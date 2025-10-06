@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, Suspense } from 'react'
 import { Canvas, extend, useLoader } from '@react-three/fiber'
 import { OrbitControls, Environment } from '@react-three/drei'
 import * as THREE from 'three'
@@ -39,13 +39,11 @@ function createTextTexture(text: string, color: string, fontSize: number = 64): 
 }
 
 // Create curved plane geometry for wrapping image around cylinder
-function createCurvedPlaneGeometry(width: number, height: number, curveSegments: number = 32) {
+function createCurvedPlaneGeometry(width: number, height: number, curveSegments: number = 32, radius: number = 1.2) {
   const geometry = new THREE.BufferGeometry()
   const vertices: number[] = []
   const uvs: number[] = []
   const indices: number[] = []
-
-  const radius = 1.23
   const arcAngle = Math.PI * 0.5 // 90 degrees
 
   // Create vertices
@@ -84,6 +82,27 @@ function createCurvedPlaneGeometry(width: number, height: number, curveSegments:
   return geometry
 }
 
+// Separate component for image loading (handles useLoader with valid URLs only)
+function ImageMesh({ imageUrl, imagePositionY, geometry }: {
+  imageUrl: string
+  imagePositionY: number
+  geometry: THREE.BufferGeometry
+}) {
+  const imageTexture = useLoader(THREE.TextureLoader, imageUrl)
+
+  return (
+    <mesh position={[0, imagePositionY, 0]} geometry={geometry}>
+      <meshBasicMaterial
+        map={imageTexture}
+        transparent={true}
+        alphaTest={0.1}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+    </mesh>
+  )
+}
+
 interface MugProps {
   color: string
   text: string
@@ -95,14 +114,13 @@ interface MugProps {
 }
 
 function Mug({ color, text, textColor, textSize, imageUrl, imageScale, imagePositionY }: MugProps) {
-  const imageTexture = imageUrl ? useLoader(THREE.TextureLoader, imageUrl) : null
-
   const imageCurvedGeometry = useMemo(() => {
-    return createCurvedPlaneGeometry(2, imageScale, 48)
+    // Scale both width and height proportionally for aspect ratio maintenance
+    return createCurvedPlaneGeometry(2 * imageScale, imageScale, 48, 1.2)
   }, [imageScale])
 
   const textCurvedGeometry = useMemo(() => {
-    return createCurvedPlaneGeometry(2, 0.6 * textSize, 48)
+    return createCurvedPlaneGeometry(2, 0.6 * textSize, 48, 1.2)
   }, [textSize])
 
   const textTexture = useMemo(() => {
@@ -147,17 +165,15 @@ function Mug({ color, text, textColor, textSize, imageUrl, imageScale, imagePosi
         </mesh>
       )}
 
-      {/* Image/Logo on mug - curved using custom geometry */}
-      {imageTexture && (
-        <mesh position={[0, imagePositionY, 0]} geometry={imageCurvedGeometry}>
-          <meshBasicMaterial
-            map={imageTexture}
-            transparent={true}
-            alphaTest={0.1}
-            side={THREE.DoubleSide}
-            depthWrite={false}
+      {/* Image/Logo on mug - only render if imageUrl exists */}
+      {imageUrl && (
+        <Suspense fallback={null}>
+          <ImageMesh
+            imageUrl={imageUrl}
+            imagePositionY={imagePositionY}
+            geometry={imageCurvedGeometry}
           />
-        </mesh>
+        </Suspense>
       )}
     </group>
   )
@@ -173,6 +189,29 @@ export default function SimpleMugTest() {
   const [imageScale, setImageScale] = useState(1.0)
   const [imagePositionY, setImagePositionY] = useState(0.5)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Add responsive styles
+  useEffect(() => {
+    const style = document.createElement('style')
+    style.innerHTML = `
+      @media (max-width: 768px) {
+        .mug-container {
+          grid-template-columns: 1fr !important;
+        }
+        .mug-canvas {
+          position: relative !important;
+          height: 50vh !important;
+        }
+        .mug-controls {
+          height: auto !important;
+        }
+      }
+    `
+    document.head.appendChild(style)
+    return () => {
+      document.head.removeChild(style)
+    }
+  }, [])
 
   const colors = [
     { name: 'Black', value: '#000000' },
@@ -226,11 +265,18 @@ export default function SimpleMugTest() {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', minHeight: '600px', background: '#f3f4f6', display: 'flex', flexDirection: 'column' }}>
-      {/* 3D Canvas */}
-      <div style={{
-        flexShrink: 0,
-        height: '400px',
+    <div className="mug-container" style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      height: '100vh',
+      width: '100%',
+      gap: 0
+    }}>
+      {/* Left Column - 3D Canvas (Sticky) */}
+      <div className="mug-canvas" style={{
+        position: 'sticky',
+        top: 0,
+        height: '100vh',
         background: 'linear-gradient(to bottom, #e0f2fe 0%, #f3f4f6 50%, #ffffff 100%)'
       }}>
         <Canvas
@@ -290,8 +336,12 @@ export default function SimpleMugTest() {
         </Canvas>
       </div>
 
-      {/* Controls Panel - Scrollable */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      {/* Right Column - Controls Panel (Scrollable) */}
+      <div className="mug-controls" style={{
+        overflowY: 'auto',
+        height: '100vh',
+        background: '#ffffff'
+      }}>
         {/* Color Picker */}
         <div style={{ padding: '20px', background: 'white', borderTop: '1px solid #e5e7eb' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>

@@ -113,4 +113,44 @@ describe('SplitScreenLayout', () => {
     const sections = screen.getAllByRole('region')
     expect(sections).toHaveLength(2)
   })
+
+  // Story 5.1 AC validation tests
+  describe('3D Canvas height constraints (Story 5.1)', () => {
+    it('applies min-h-[600px] to left panel for 3D viewport', () => {
+      render(
+        <SplitScreenLayout
+          leftComponent={<div>3D Canvas</div>}
+          rightComponent={<div>Form</div>}
+        />
+      )
+
+      const leftSection = screen.getByLabelText('3D Mug Designer')
+      expect(leftSection).toHaveClass('min-h-[600px]')
+    })
+
+    it('applies lg:h-screen to left panel for desktop full-height layout', () => {
+      render(
+        <SplitScreenLayout
+          leftComponent={<div>3D Canvas</div>}
+          rightComponent={<div>Form</div>}
+        />
+      )
+
+      const leftSection = screen.getByLabelText('3D Mug Designer')
+      expect(leftSection).toHaveClass('lg:h-screen')
+    })
+
+    it('ensures responsive layout remains smooth with height constraints', () => {
+      render(
+        <SplitScreenLayout
+          leftComponent={<div>3D Canvas</div>}
+          rightComponent={<div>Form</div>}
+        />
+      )
+
+      const leftSection = screen.getByLabelText('3D Mug Designer')
+      // Verify height constraints don't conflict with responsive width classes
+      expect(leftSection).toHaveClass('w-full', 'lg:w-3/5', 'min-h-[600px]', 'lg:h-screen')
+    })
+  })
 })

@@ -7,7 +7,13 @@
       "Bash(git rm:*)",
       "Bash(git push:*)",
       "Bash(git log:*)",
-      "Bash(git update-ref:*)"
+      "Bash(git update-ref:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Add text customization controls (Phase 2 complete)\n\nImplemented 3D text rendering on the mug with customization options:\n- Text input field with 30 character limit and counter\n- Text size slider (0.5x to 2.0x scaling)\n- Text color picker with 5 preset colors\n- Real-time 3D text rendering using troika-three-text\n- Improved text visibility (larger base size, white default color)\n\nNote: Font selector was excluded as troika-three-text requires font file URLs, not font names.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(mkdir:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:*)"
     ],
     "deny": [],
     "ask": []
