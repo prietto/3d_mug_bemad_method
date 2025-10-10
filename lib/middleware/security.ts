@@ -147,18 +147,41 @@ export function logError(
   context: LogContext,
   additionalData?: Record<string, any>
 ) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const stack = error instanceof Error ? error.stack : undefined;
-  
+  let errorMessage: string
+  let stack: string | undefined
+  let errorDetails: any = undefined
+
+  if (error instanceof Error) {
+    errorMessage = error.message
+    stack = error.stack
+    // Include any additional error properties
+    errorDetails = {
+      name: error.name,
+      ...Object.getOwnPropertyNames(error).reduce((acc, key) => {
+        if (key !== 'message' && key !== 'stack' && key !== 'name') {
+          acc[key] = (error as any)[key]
+        }
+        return acc
+      }, {} as Record<string, any>)
+    }
+  } else if (typeof error === 'object' && error !== null) {
+    // Handle non-Error objects
+    errorMessage = JSON.stringify(error)
+    errorDetails = error
+  } else {
+    errorMessage = String(error)
+  }
+
   const logData = {
     level: 'error',
     message: errorMessage,
     stack,
+    errorDetails,
     context,
     additionalData,
     timestamp: new Date().toISOString(),
   };
-  
+
   console.error('API Error:', JSON.stringify(logData, null, 2));
 }
 

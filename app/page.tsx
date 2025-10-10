@@ -6,6 +6,7 @@ import MinimalHeader from './components/MinimalHeader'
 import SplitScreenLayout from './components/SplitScreenLayout'
 import Footer from './components/Footer'
 import SimpleMugTest from './components/SimpleMugTest'
+import MugDesignerRouter from './components/MugDesignerRouter'
 import LeadCaptureForm from './components/LeadCaptureForm'
 import { useAnalyticsIntegration } from '@/lib/hooks/useAnalyticsIntegration'
 import { Design, CreateLeadRequest } from '@/lib/types'
@@ -109,7 +110,7 @@ export default function Home() {
 
       <main role="main" className="flex-grow">
         <SplitScreenLayout
-          leftComponent={<SimpleMugTest />}
+          leftComponent={<MugDesignerRouter />}
           rightComponent={
             <LeadCaptureForm
               design={currentDesign}

@@ -7,6 +7,7 @@ import UploadProgress from './UploadProgress'
 
 interface ImageUploadProps {
   className?: string
+  mode?: 'direct' | 'base' // direct = apply to mug immediately, base = store as base image for enhancement
   onUploadStart?: () => void
   onUploadComplete?: (imageUrl: string) => void
   onUploadError?: (error: string) => void
@@ -14,6 +15,7 @@ interface ImageUploadProps {
 
 export default function ImageUpload({
   className = "",
+  mode = 'direct',
   onUploadStart,
   onUploadComplete,
   onUploadError
@@ -25,7 +27,7 @@ export default function ImageUpload({
   const [currentFileName, setCurrentFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  const { currentDesign, updateDesign, trackImageUpload } = useDesignStore()
+  const { currentDesign, updateDesign, setBaseImageForEnhancement, trackImageUpload } = useDesignStore()
 
   // File validation constants
   const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/jpg']
@@ -121,15 +123,20 @@ export default function ImageUpload({
       // Update progress to complete
       setUploadProgress(100)
 
-      // Update the design store with both base64 (for immediate display) and URL (for 3D texture)
-      updateDesign({
-        uploadedImageBase64: imageBase64,
-        uploadedImageUrl: uploadResult.url,
-        lastModified: new Date().toISOString()
-      })
-
-      // Complete the upload
-      onUploadComplete?.(uploadResult.url)
+      // Handle different modes
+      if (mode === 'base') {
+        // For base image mode, store as base64 for image-to-image enhancement
+        setBaseImageForEnhancement(imageBase64)
+        onUploadComplete?.(imageBase64)
+      } else {
+        // For direct mode, update the design store with both base64 and URL (existing behavior)
+        updateDesign({
+          uploadedImageBase64: imageBase64,
+          uploadedImageUrl: uploadResult.url,
+          lastModified: new Date().toISOString()
+        })
+        onUploadComplete?.(uploadResult.url)
+      }
       
       // Reset progress after a brief delay
       setTimeout(() => {

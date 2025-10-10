@@ -65,25 +65,33 @@ After reviewing the PRD and documentation, this appears to be a **greenfield pro
 
 ### Architecture Summary
 
-This architecture combines a modern React-based frontend with Three.js for 3D visualization, backed by a serverless API layer for lead capture and design storage. The system prioritizes mobile-first performance, rapid deployment, and cost-effective scaling to meet the goal of generating 50+ leads within 3 months.
+**Current Version (v2.0 - Epic 8 AI Generation Pivot):**
+
+This architecture combines a modern React-based frontend with **AI-powered mug design generation** via Google AI Studio (Gemini 2.5 Flash Image), backed by a serverless API layer for lead capture and design storage. The system prioritizes mobile-first performance, rapid deployment, cost-effective AI usage with multi-layer rate limiting, and conversion optimization to meet the goal of generating 50+ leads within 3 months.
 
 **Key Integration Points:**
 - Frontend React app communicates with serverless API endpoints
-- 3D designer stores temporary designs in browser, persists final designs via API
-- Lead capture integrates Google Analytics for conversion tracking
-- MongoDB stores lead data and associated design preferences
+- AI Generation Engine creates textures via text-to-image or image-to-image modes
+- Multi-layer rate limiting (localStorage, IP-based, global) prevents API abuse
+- Design state includes AI metadata (prompts, generation method) for analytics
+- Lead capture integrates Google Analytics for conversion tracking and AI feature adoption metrics
+- Supabase PostgreSQL stores lead data, design configurations, and rate limiting counters
+- Manual upload preserved as fallback mechanism when AI unavailable
+
+**Major Change (v2.0):** Deprecated Three.js/WebGL 3D Designer Engine → Google AI Studio AI Generation Engine
 
 ### Change Log
 
 | Date | Version | Description | Author |
 |------|---------|-------------|---------|
 | 2025-09-25 | v1.0 | Initial architecture creation | Winston (Architect) |
+| 2025-10-09 | v2.0 | **Epic 8: AI Generation Pivot** - Replaced Three.js 3D Designer Engine with Google AI Studio (Gemini 2.5 Flash Image) AI Generation Engine. Major architectural changes: deprecated WebGL/GPU rendering, added text-to-image and image-to-image AI generation, implemented 3-layer rate limiting (session/IP/global), added `ai_generation_limits` and `ai_generation_global_counter` database tables, updated Design data model with AI fields (generationMethod, aiPrompt, baseImageUrl), created Rate Limiter Service component, updated all workflows to reflect AI-first approach with manual upload as fallback. | Winston (Architect) |
 
 ## High Level Architecture
 
 ### Technical Summary
 
-The system follows a **Jamstack architecture** with serverless backend services, deployed on Vercel with Supabase for database and authentication. The frontend is a Next.js React application featuring Three.js for 3D mug visualization, optimized for mobile-first interactions. The backend consists of serverless API routes handling lead capture, design persistence, and analytics integration. This architecture achieves the PRD goals through performance-optimized 3D experiences that convert visitors into qualified leads at the target 8-12% conversion rate.
+The system follows a **Jamstack architecture** with serverless backend services, deployed on Vercel with Supabase for database and authentication. The frontend is a Next.js React application featuring **AI-powered mug design generation** via Google AI Studio (Gemini 2.5 Flash Image), enabling users to create custom textures through text prompts or image enhancement. The backend consists of serverless API routes handling AI generation requests, lead capture, design persistence, and analytics integration. This architecture achieves the PRD goals through AI-powered creative experiences that convert visitors into qualified leads at the target 8-12% conversion rate.
 
 ### Platform and Infrastructure Choice
 
@@ -123,30 +131,39 @@ Based on the PRD requirements for rapid market validation, mobile-first performa
 graph TB
     User[👤 User] --> CDN[🌐 Vercel CDN]
     CDN --> Web[📱 Next.js Web App]
-    Web --> ThreeJS[🎨 Three.js 3D Designer]
+    Web --> AIGen[🤖 AI Generation Engine]
     Web --> API[⚡ Next.js API Routes]
-    
-    API --> DB[(� SQLite Database)]
+
+    API --> GoogleAI[🎨 Google AI Studio API]
+    API --> DB[(🗄️ Supabase PostgreSQL)]
     Web --> Analytics[📊 Google Analytics]
-    
-    ThreeJS --> GPU[🖥️ WebGL/GPU]
-    
+
+    GoogleAI --> AIGen
+
     subgraph "Vercel Platform"
         Web
         API
         CDN
+    end
+
+    subgraph "Supabase Platform"
         DB
+    end
+
+    subgraph "Google AI Services"
+        GoogleAI
     end
 ```
 
 ### Architectural Patterns
 
-- **Jamstack Architecture:** Static site generation with serverless APIs - _Rationale:_ Optimal performance and scalability for content-heavy applications with 3D interactivity
-- **Component-Based UI:** Reusable React components with TypeScript - _Rationale:_ Maintainability and type safety across 3D designer and form components
+- **Jamstack Architecture:** Static site generation with serverless APIs - _Rationale:_ Optimal performance and scalability for AI-powered design generation
+- **Component-Based UI:** Reusable React components with TypeScript - _Rationale:_ Maintainability and type safety across AI generation UI and form components
 - **Repository Pattern:** Abstract data access logic - _Rationale:_ Enables testing and future database migration flexibility
-- **API-First Design:** Well-defined API contracts between frontend and backend - _Rationale:_ Supports mobile app expansion and third-party integrations
-- **Progressive Enhancement:** Core functionality works without JavaScript, enhanced with 3D features - _Rationale:_ Accessibility and performance for diverse mobile devices
-- **Event-Driven Analytics:** User interactions trigger analytics events - _Rationale:_ Detailed conversion funnel tracking for optimization
+- **API-First Design:** Well-defined API contracts between frontend and backend - _Rationale:_ Supports mobile app expansion and third-party AI service integrations
+- **Multi-Layer Rate Limiting:** Client-side (localStorage), IP-based (Supabase), and global (server-side) limits - _Rationale:_ Prevents API abuse while staying within Google AI Studio free tier (1,500 requests/day)
+- **Progressive Enhancement:** Core functionality with manual upload fallback, enhanced with AI generation - _Rationale:_ Reliability and graceful degradation when AI service unavailable
+- **Event-Driven Analytics:** User interactions trigger analytics events - _Rationale:_ Detailed conversion funnel tracking and AI feature usage monitoring
 
 ## Tech Stack
 
@@ -175,8 +192,8 @@ This is the **DEFINITIVE** technology selection for the entire project. All deve
 | Monitoring | Vercel Analytics + Sentry | Latest | Performance and error monitoring | Real-time insights and error tracking |
 | Logging | Vercel Functions Logs | Built-in | Application logging | Integrated serverless function logging |
 | CSS Framework | Tailwind CSS | 3.3+ | Utility-first CSS framework | Mobile-first responsive design |
-| 3D Graphics | Three.js + React Three Fiber | 0.156+ / 8.15+ | 3D visualization engine | WebGL-based 3D mug rendering and interaction |
-| Analytics | Google Analytics 4 | Latest | User behavior tracking | Conversion funnel analysis, lead attribution |
+| AI Image Generation | Google AI Studio (Gemini 2.5 Flash Image) | Latest | AI-powered texture generation | Text-to-image and image-to-image mug design creation (1,500 free requests/day) |
+| Analytics | Google Analytics 4 | Latest | User behavior tracking | Conversion funnel analysis, lead attribution, AI feature usage metrics |
 
 ## Data Models
 
@@ -221,15 +238,18 @@ interface Lead {
 
 ### Design
 
-**Purpose:** Represents a user's 3D mug customization including uploaded images, colors, and text configuration.
+**Purpose:** Represents a user's AI-generated mug design including generation method, prompts, and texture configuration.
 
 **Key Attributes:**
 - `id`: string (UUID) - Unique identifier
 - `mugColor`: string - Selected base color
-- `uploadedImageUrl`: string - User-uploaded image reference
-- `customText`: string - User-added text
+- `generatedImageUrl`: string - AI-generated or manually uploaded image reference
+- `generationMethod`: enum - 'manual' | 'text-to-image' | 'image-to-image'
+- `aiPrompt`: string - User prompt for AI generation (if applicable)
+- `baseImageUrl`: string - Base image for image-to-image enhancement (if applicable)
+- `customText`: string - User-added text overlay
 - `textFont`: string - Selected font family
-- `textPosition`: object - 3D positioning data
+- `textPosition`: object - Text positioning data
 - `createdAt`: Date - Design creation timestamp
 - `lastModified`: Date - Last interaction timestamp
 
@@ -239,13 +259,17 @@ interface Lead {
 interface Design {
   id: string;
   mugColor: string;
-  uploadedImageBase64?: string; // Store as base64 for simplicity
+  generatedImageUrl?: string; // AI-generated or manually uploaded image
+  generationMethod: 'manual' | 'text-to-image' | 'image-to-image';
+  aiPrompt?: string; // Prompt used for AI generation
+  baseImageUrl?: string; // Base image for image-to-image mode
   customText?: string;
   textFont?: string;
   textPosition?: string; // JSON string for PostgreSQL JSONB storage
   createdAt: string; // ISO string for PostgreSQL timestamp compatibility
-  lastModified: string; // ISO string for PostgreSQL timestamp compatibility  
+  lastModified: string; // ISO string for PostgreSQL timestamp compatibility
   isComplete: boolean;
+  generationCount?: number; // Track user's generation attempts
 }
 ```
 
@@ -273,7 +297,7 @@ interface Design {
 interface AnalyticsEvent {
   id: string;
   sessionId: string;
-  eventType: 'page_view' | 'mug_rotate' | 'color_change' | 'image_upload' | 'text_add' | 'lead_capture';
+  eventType: 'page_view' | 'ai_generation_start' | 'ai_generation_success' | 'ai_generation_error' | 'color_change' | 'image_upload' | 'text_add' | 'lead_capture';
   eventData: Record<string, any>;
   timestamp: Date;
   userAgent: string;
@@ -284,6 +308,61 @@ interface AnalyticsEvent {
 #### Relationships
 
 - Many-to-One with Lead (optional)
+
+### AIGenerationLimit
+
+**Purpose:** Tracks IP-based and global rate limiting for AI generation requests to prevent abuse and stay within Google AI Studio free tier limits.
+
+**Key Attributes:**
+- `id`: string (UUID) - Unique identifier
+- `ipAddress`: string - Client IP address
+- `generationCount`: number - Number of generations for this IP today
+- `dateKey`: string - Date key for daily reset (format: YYYY-MM-DD)
+- `lastGenerationAt`: Date - Timestamp of last generation
+- `createdAt`: Date - Record creation timestamp
+
+#### TypeScript Interface
+
+```typescript
+interface AIGenerationLimit {
+  id: string;
+  ipAddress: string;
+  generationCount: number;
+  dateKey: string; // Format: YYYY-MM-DD
+  lastGenerationAt: string; // ISO string for PostgreSQL timestamp compatibility
+  createdAt: string; // ISO string for PostgreSQL timestamp compatibility
+}
+```
+
+#### Database Schema (Supabase PostgreSQL)
+
+```sql
+CREATE TABLE ai_generation_limits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_address TEXT NOT NULL,
+  generation_count INTEGER DEFAULT 1,
+  last_generation_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  date_key TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(ip_address, date_key)
+);
+
+CREATE INDEX idx_ai_limits_ip_date ON ai_generation_limits(ip_address, date_key);
+
+CREATE TABLE ai_generation_global_counter (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date_key TEXT NOT NULL UNIQUE,
+  total_generations INTEGER DEFAULT 0,
+  last_updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_global_counter_date ON ai_generation_global_counter(date_key);
+```
+
+#### Relationships
+
+- Standalone entity (no direct relationships to other models)
 
 ## API Specification
 
@@ -578,18 +657,43 @@ components:
 
 Based on the architectural patterns, tech stack, and data models, I've identified these major logical components across the fullstack:
 
-### 3D Designer Engine
+### AI Generation Engine
 
-**Responsibility:** Core 3D mug visualization and interaction functionality using Three.js and React Three Fiber for WebGL-based rendering with touch-optimized controls.
+**Status:** ✅ Active (replaces deprecated 3D Designer Engine)
+
+**Responsibility:** Core AI-powered mug texture generation using Google AI Studio (Gemini 2.5 Flash Image) for text-to-image and image-to-image design creation. Manages generation requests, rate limiting, and integration with design state management.
 
 **Key Interfaces:**
-- `onDesignChange(design: Design)` - Notify parent components of design updates
-- `loadDesign(design: Design)` - Load existing design configuration into 3D scene
+- `generateFromText(prompt: string)` - Generate mug texture from text prompt
+- `enhanceImage(baseImage: File, prompt: string)` - Enhance uploaded image with AI transformation
+- `onGenerationComplete(imageUrl: string, design: Design)` - Notify parent components of successful generation
+- `checkRateLimit()` - Verify user is within generation quota (3-layer rate limiting)
 - `exportDesignPreview()` - Generate static image preview for lead capture
 
-**Dependencies:** Three.js, React Three Fiber, Zustand design store, file upload service
+**Dependencies:** Google AI Studio API, Zustand design store, rate limiter service, analytics tracker
 
-**Technology Stack:** TypeScript, React Three Fiber, Three.js, WebGL, Zustand for 3D state management
+**Technology Stack:** TypeScript, React, Google AI Studio SDK, Zustand for state management, Supabase for rate limit storage
+
+**Rate Limiting Strategy:**
+- **Layer 1 (Session):** 5 free generations via localStorage (frictionless UX)
+- **Layer 2 (IP-based):** 15 generations/day per IP (Supabase tracking)
+- **Layer 3 (Global):** 1,400 total generations/day across all users (safety buffer)
+
+---
+
+### ~~3D Designer Engine~~ (DEPRECATED - Epic 8)
+
+**Deprecation Status:** ⚠️ Replaced by AI Generation Engine in Epic 8
+
+**Original Responsibility:** Three.js-based 3D mug visualization with manual texture uploads.
+
+**Deprecation Rationale:** Pivoted to AI-powered generation for enhanced user creativity and reduced technical complexity. Manual upload functionality preserved as fallback within AI Generation Engine.
+
+**Migration Path:**
+- Manual image uploads moved to AI Generation Engine (generationMethod: 'manual')
+- Three.js and React Three Fiber removed from tech stack
+- Existing design data migrated via generationMethod field addition
+- All WebGL/GPU rendering code removed
 
 ### Lead Capture Service
 
@@ -637,28 +741,55 @@ Based on the architectural patterns, tech stack, and data models, I've identifie
 
 ### File Upload Handler
 
-**Responsibility:** Process user image uploads with validation, optimization, and CDN integration for 3D texture application.
+**Responsibility:** Process user image uploads with validation, optimization, and base64 encoding for AI image-to-image enhancement or manual design creation.
 
 **Key Interfaces:**
 - `uploadImage(file: File, designId: string)` - Handle image upload and processing
-- `validateFile(file: File)` - Validate file type and size constraints
-- `optimizeImage(file: File)` - Resize and optimize for 3D rendering
+- `validateFile(file: File)` - Validate file type and size constraints (max 5MB, JPEG/PNG/WebP)
+- `encodeToBase64(file: File)` - Convert image to base64 for Google AI Studio API
+- `compressImage(file: File)` - Resize to max 1024x1024 for AI processing
 
-**Dependencies:** Supabase Storage, image processing utilities, CDN
+**Dependencies:** Browser File API, image compression utilities
 
-**Technology Stack:** Supabase Storage, Next.js API routes, browser File API
+**Technology Stack:** Browser File API, Next.js API routes, canvas-based image compression
+
+### Rate Limiter Service
+
+**Status:** ✅ New Component (Epic 8)
+
+**Responsibility:** Multi-layer rate limiting for AI generation requests to prevent abuse and ensure fair usage within Google AI Studio free tier (1,500 requests/day).
+
+**Key Interfaces:**
+- `checkSessionLimit()` - Verify Layer 1 (localStorage) - 5 free generations
+- `checkIPLimit(ipAddress: string)` - Verify Layer 2 (Supabase) - 15/day per IP
+- `checkGlobalLimit()` - Verify Layer 3 (Supabase) - 1,400/day total
+- `incrementCounters(ipAddress: string)` - Update all tracking counters post-generation
+- `getRemainingQuota(ipAddress: string)` - Display remaining generations to user
+- `getResetTime()` - Calculate time until UTC midnight reset
+
+**Dependencies:** Supabase database, localStorage API, IP detection utilities
+
+**Technology Stack:** TypeScript, Supabase client, React hooks (useRateLimiter), Node.js (server-side validation)
+
+**Database Tables:**
+- `ai_generation_limits` - IP-based daily tracking
+- `ai_generation_global_counter` - Global daily total
 
 ### Mobile-First UI Components
 
-**Responsibility:** Responsive React components optimized for touch interactions and progressive enhancement across device types.
+**Responsibility:** Responsive React components optimized for touch interactions and progressive enhancement across device types, featuring AI generation interface and manual upload fallback.
 
 **Key Interfaces:**
-- `<MugDesigner />` - Main 3D designer container component
+- `<AITextureGenerator />` - Main AI generation interface with mode toggle
+- `<PromptInput />` - Text prompt input with character counter (500 char limit)
+- `<GenerationModeToggle />` - Switch between Manual | Text-to-Image | Image-to-Image
+- `<QuotaDisplay />` - Real-time generation quota display with warnings
 - `<ColorPicker />` - Touch-friendly color selection interface
-- `<TextEditor />` - In-context text editing with 3D positioning
-- `<LeadCaptureModal />` - Conversion-optimized lead capture form
+- `<TextEditor />` - In-context text editing with positioning
+- `<LeadCaptureForm />` - Conversion-optimized lead capture form (always visible)
+- `<ImagePreview />` - Generated/uploaded image preview before application
 
-**Dependencies:** Tailwind CSS, Headless UI, React Three Fiber, Zustand
+**Dependencies:** Tailwind CSS, Headless UI, Zustand, React Hook Form
 
 **Technology Stack:** React, TypeScript, Tailwind CSS, Headless UI, React Hook Form
 
@@ -666,39 +797,50 @@ Based on the architectural patterns, tech stack, and data models, I've identifie
 
 ```mermaid
 graph TD
-    UI[Mobile-First UI Components] --> Designer[3D Designer Engine]
+    UI[Mobile-First UI Components] --> AIGen[AI Generation Engine]
     UI --> Upload[File Upload Handler]
     UI --> Lead[Lead Capture Service]
-    
-    Designer --> Persistence[Design Persistence Layer]
-    Designer --> Analytics[Analytics Tracking Engine]
-    
+
+    AIGen --> RateLimit[Rate Limiter Service]
+    AIGen --> Persistence[Design Persistence Layer]
+    AIGen --> Analytics[Analytics Tracking Engine]
+    AIGen --> API[/api/generate-texture]
+
+    API --> GoogleAI[Google AI Studio API]
+    API --> RateLimit
+
+    RateLimit --> DB[(Supabase Database)]
+
     Lead --> Analytics
     Lead --> Persistence
-    
+
+    Upload --> AIGen
     Upload --> Persistence
-    Upload --> Designer
-    
-    Persistence --> DB[(Supabase Database)]
-    Upload --> Storage[(Supabase Storage)]
+
+    Persistence --> DB
     Analytics --> GA[Google Analytics]
-    
+
     subgraph "Frontend Components"
         UI
-        Designer
+        AIGen
     end
-    
+
     subgraph "Service Layer"
         Lead
         Upload
         Analytics
         Persistence
+        RateLimit
     end
-    
+
+    subgraph "Backend API Routes"
+        API
+    end
+
     subgraph "External Services"
         DB
-        Storage
         GA
+        GoogleAI
     end
 ```
 
@@ -706,38 +848,94 @@ graph TD
 
 Based on the PRD requirements and component design, here are the external service integrations needed:
 
+### Google AI Studio API (Gemini 2.5 Flash Image)
+
+**Status:** ✅ Primary Integration (Epic 8)
+
+- **Purpose:** AI-powered mug texture generation via text-to-image and image-to-image transformation
+- **Documentation:** https://ai.google.dev/gemini-api/docs/imagen
+- **Base URL:** https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateImage
+- **Authentication:** API Key (stored in `.env.local` server-side only)
+- **Rate Limits:** 1,500 requests per day (free tier)
+- **Pricing:** Free tier: 1,500/day | Paid: $0.039 per image (1,290 tokens @ $30/1M)
+
+**Key Endpoints Used:**
+- `POST /v1beta/models/gemini-2.5-flash-image:generateImage` - Generate texture from text prompt or enhance uploaded image
+
+**Request Format:**
+```json
+{
+  "prompt": "watercolor flowers on white background",
+  "image": "base64_encoded_image_optional",
+  "aspectRatio": "1:1",
+  "numberOfImages": 1
+}
+```
+
+**Response Format:**
+```json
+{
+  "predictions": [{
+    "bytesBase64Encoded": "base64_image_data",
+    "mimeType": "image/jpeg"
+  }]
+}
+```
+
+**Integration Notes:**
+- All API calls routed through `/api/generate-texture` Next.js API route (API key protection)
+- Multi-layer rate limiting (session, IP-based, global) prevents abuse
+- Base64 images returned and converted to data URLs for immediate use
+- Typical response time: 2-4 seconds
+- Built-in content filtering for inappropriate prompts/generations
+- Automatic retry with exponential backoff on transient failures
+- Clear error messages for quota exhaustion, network failures, invalid input
+
+**Rate Limiting Implementation:**
+1. **Layer 1 (Client):** localStorage tracks first 5 free generations
+2. **Layer 2 (Server):** Supabase `ai_generation_limits` table tracks IP (max 15/day)
+3. **Layer 3 (Server):** Supabase `ai_generation_global_counter` table (max 1,400/day total)
+
 ### Google Analytics 4 API
 
-- **Purpose:** Track user behavior, 3D tool engagement metrics, and conversion rates from visitors to leads
+- **Purpose:** Track user behavior, AI generation engagement metrics, and conversion rates from visitors to leads
 - **Documentation:** https://developers.google.com/analytics/devguides/collection/ga4
 - **Base URL(s):** https://www.google-analytics.com/mp/collect
 - **Authentication:** Measurement ID and API Secret
 - **Rate Limits:** 2M events per property per day, 500 events per request
 
 **Key Endpoints Used:**
-- `POST /mp/collect` - Send custom events for 3D interactions
+- `POST /mp/collect` - Send custom events for AI generation interactions
 - `POST /mp/collect` - Track conversion events for lead capture
 
-**Integration Notes:** Will use gtag.js for client-side tracking and Measurement Protocol for server-side conversion tracking. Custom events will track mug rotation, color changes, image uploads, and text additions to build detailed engagement profiles.
+**Integration Notes:** Will use gtag.js for client-side tracking and Measurement Protocol for server-side conversion tracking. Custom events will track AI generation attempts, success/failure rates, generation method selection (text-to-image vs image-to-image), color changes, and text additions to build detailed engagement profiles and measure AI feature adoption.
 
-### Supabase Storage API
+**Key AI-Related Events:**
+- `ai_generation_start` - User initiates AI generation (method: text-to-image | image-to-image)
+- `ai_generation_success` - Successful image generation (duration, method, prompt_length)
+- `ai_generation_error` - Failed generation (error_type, layer_blocked)
+- `ai_quota_warning` - User approaching rate limit (remaining_generations)
+- `generation_method_toggle` - User switches generation mode
 
-- **Purpose:** Handle user-uploaded images for mug customization with CDN delivery and automatic optimization
+### Supabase Storage API (DEPRECATED - Epic 8)
+
+**Status:** ⚠️ Minimal Usage (manual upload fallback only)
+
+- **Purpose:** Handle user-uploaded images for manual mug design creation (fallback when AI unavailable)
 - **Documentation:** https://supabase.com/docs/reference/javascript/storage-api
 - **Base URL(s):** https://[project-ref].supabase.co/storage/v1
 - **Authentication:** Service Role Key (server-side), RLS policies (client-side)
 - **Rate Limits:** 100 requests per second per project
 
 **Key Endpoints Used:**
-- `POST /object/{bucket-name}/{file-path}` - Upload design images
-- `GET /object/public/{bucket-name}/{file-path}` - Retrieve images for 3D rendering
-- `DELETE /object/{bucket-name}/{file-path}` - Clean up temporary uploads
+- `POST /object/{bucket-name}/{file-path}` - Upload manual design images (rarely used)
+- `GET /object/public/{bucket-name}/{file-path}` - Retrieve images for display
 
-**Integration Notes:** Images will be automatically resized and optimized for 3D texture mapping. CDN caching will ensure fast global delivery for mobile users. Temporary uploads will be cleaned up if not associated with a lead within 24 hours.
+**Integration Notes:** With AI generation as primary method, storage usage is minimal. Images for image-to-image enhancement are base64-encoded and sent directly to Google AI Studio API (not stored in Supabase). Only manual uploads persist in storage as fallback mechanism.
 
 ### Supabase Database API
 
-- **Purpose:** Real-time database operations for lead capture, design persistence, and analytics event storage
+- **Purpose:** Real-time database operations for lead capture, design persistence, AI rate limiting, and analytics event storage
 - **Documentation:** https://supabase.com/docs/reference/javascript/supabase-client
 - **Base URL(s):** https://[project-ref].supabase.co/rest/v1
 - **Authentication:** JWT tokens with Row Level Security
@@ -745,11 +943,15 @@ Based on the PRD requirements and component design, here are the external servic
 
 **Key Endpoints Used:**
 - `POST /rest/v1/leads` - Create new leads
-- `POST /rest/v1/designs` - Save design configurations
-- `POST /rest/v1/analytics_events` - Store interaction events
+- `POST /rest/v1/designs` - Save AI-generated or manual design configurations
+- `POST /rest/v1/analytics_events` - Store interaction events (including AI generation events)
 - `GET /rest/v1/designs?id=eq.{id}` - Retrieve saved designs
+- `POST /rest/v1/ai_generation_limits` - Track IP-based rate limiting (Layer 2)
+- `GET /rest/v1/ai_generation_limits?ip_address=eq.{ip}&date_key=eq.{date}` - Check IP quota
+- `POST /rest/v1/ai_generation_global_counter` - Track global daily generation count (Layer 3)
+- `GET /rest/v1/ai_generation_global_counter?date_key=eq.{date}` - Check global quota
 
-**Integration Notes:** Real-time subscriptions will enable live design synchronization across sessions. RLS policies will ensure data privacy and security. Connection pooling will optimize performance for high-traffic periods.
+**Integration Notes:** Real-time subscriptions enable live design synchronization across sessions. RLS policies ensure data privacy and security. Connection pooling optimizes performance for high-traffic periods. New rate limiting tables (`ai_generation_limits`, `ai_generation_global_counter`) implement multi-layer abuse prevention for Google AI Studio API calls. Daily automatic reset at UTC midnight via `date_key` field.
 
 ### Email Service Provider API
 
@@ -769,54 +971,74 @@ Based on the PRD requirements and component design, here are the external servic
 
 Here are the critical user journeys from the PRD illustrated as sequence diagrams:
 
-### Primary User Journey: Single-Page 3D Customization to Lead Capture
+### Primary User Journey: AI-Powered Mug Design Generation to Lead Capture (Epic 8)
 
-**Note:** This workflow reflects the Epic 4 single-page UX model where both the 3D tool and lead form are visible simultaneously from page load.
+**Note:** This workflow reflects the Epic 8 AI Generation pivot where users create mug designs via text-to-image or image-to-image AI generation, with multi-layer rate limiting and always-visible lead form.
 
 ```mermaid
 sequenceDiagram
     participant U as User
     participant UI as Mobile UI
-    participant 3D as 3D Designer Engine
+    participant AIGen as AI Generation Engine
+    participant RateLimit as Rate Limiter
     participant Form as Lead Form (Always Visible)
     participant Store as Design Store
-    participant API as Backend API
+    participant API as /api/generate-texture
+    participant GoogleAI as Google AI Studio
     participant DB as Supabase DB
     participant GA as Google Analytics
 
     U->>UI: Lands on page
     UI->>GA: Track page_view event
-    UI->>3D: Initialize 3D mug scene
+    UI->>AIGen: Initialize AI generation UI
     UI->>Form: Render lead capture form
-    3D->>3D: Load default mug model
-    3D->>UI: Render interactive 3D scene
-    Form->>UI: Display empty form fields
+    AIGen->>RateLimit: Check localStorage (Layer 1)
+    RateLimit->>AIGen: Show quota: "5 free generations available"
+    AIGen->>UI: Display generation mode toggle + prompt input
 
     Note over UI,Form: Both components visible simultaneously
 
-    U->>3D: Rotates/explores mug
-    3D->>GA: Track mug_rotate event
-    3D->>Store: Update interaction state
+    U->>UI: Selects "Text-to-Image" mode
+    UI->>GA: Track generation_method_toggle event
 
-    U->>UI: Selects color (blue)
-    UI->>3D: Apply color to 3D model
-    3D->>Store: Update design state
-    3D->>GA: Track color_change event
+    U->>AIGen: Enters prompt "watercolor flowers"
+    AIGen->>UI: Enable generate button
+
+    U->>AIGen: Clicks "Generate Design"
+    AIGen->>RateLimit: Check session limit (Layer 1)
+    RateLimit->>AIGen: 4 generations remaining (OK)
+    AIGen->>GA: Track ai_generation_start event
+    AIGen->>UI: Show loading spinner + progress
+
+    AIGen->>API: POST /api/generate-texture {prompt, method}
+    API->>RateLimit: Check IP limit (Layer 2) - Supabase query
+    RateLimit->>API: IP within limit (10/15 used)
+    API->>RateLimit: Check global limit (Layer 3) - Supabase query
+    RateLimit->>API: Global within limit (850/1400 used)
+
+    API->>GoogleAI: POST generateImage API call
+    GoogleAI->>API: Return base64 image (2-3s)
+
+    API->>RateLimit: Increment all counters (localStorage, IP, global)
+    API->>AIGen: Return image data URL
+
+    AIGen->>Store: Update design state (generatedImageUrl, aiPrompt, method)
+    AIGen->>UI: Display generated image preview
+    AIGen->>GA: Track ai_generation_success event
+    AIGen->>RateLimit: Update quota display "4 of 5 free generations used"
+
+    U->>AIGen: Clicks "Apply to Mug"
+    AIGen->>UI: Render mug preview with generated texture
     Store->>API: Auto-save design (debounced)
     API->>DB: Create/update design record
 
-    U->>UI: Uploads image file
-    UI->>API: POST /upload with image
-    API->>DB: Store image metadata
-    API->>3D: Return image URL
-    3D->>3D: Apply texture to mug surface
-    3D->>GA: Track image_upload event
-    3D->>Store: Update design with image URL
+    U->>UI: Selects color (blue)
+    UI->>Store: Update mugColor
+    UI->>GA: Track color_change event
 
     U->>UI: Adds custom text "Company Event"
-    UI->>3D: Render text on 3D model
-    3D->>Store: Update design with text
-    3D->>GA: Track text_add event
+    UI->>Store: Update customText
+    UI->>GA: Track text_add event
 
     Note over U,Form: User fills form at their own pace
 
@@ -832,62 +1054,114 @@ sequenceDiagram
     Form->>U: Show inline success message with next steps
 ```
 
-**Key Difference from Previous Version:** The "High engagement detected → Show lead capture modal" trigger step has been removed. The form is now always visible, and users engage at their own pace without automated triggers.
+**Key Architectural Changes (Epic 8):**
+- Replaced Three.js 3D Designer Engine with AI Generation Engine
+- Added Google AI Studio API integration for texture generation
+- Implemented 3-layer rate limiting (session, IP-based, global)
+- Text-to-image and image-to-image generation modes
+- Real-time quota display with warnings
+- Manual upload preserved as fallback (not shown in primary flow)
 
-### Image Upload and Processing Workflow
+### AI Generation Rate Limiting and Error Handling Workflow (Epic 8)
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant UI as Upload Component
-    participant Val as File Validator
-    participant API as Upload API
-    participant Storage as Supabase Storage
-    participant 3D as 3D Engine
+    participant AIGen as AI Generation Engine
+    participant RateLimit as Rate Limiter Service
+    participant API as /api/generate-texture
+    participant DB as Supabase DB
+    participant GoogleAI as Google AI Studio
     participant GA as Analytics
-    
-    U->>UI: Drags/drops image file
-    UI->>Val: Validate file type & size
-    
-    alt File validation fails
-        Val->>UI: Return validation error
-        UI->>U: Show error message
-        UI->>GA: Track upload_error event
-    else File validation passes
-        Val->>UI: File approved
-        UI->>U: Show upload progress
-        UI->>API: POST /upload (multipart)
-        API->>Storage: Store file in bucket
-        Storage->>API: Return file URL + metadata
-        API->>UI: Return success with URL
-        UI->>3D: Load texture from URL
-        3D->>3D: Apply texture to mug surface
-        3D->>UI: Update 3D visualization
-        UI->>GA: Track image_upload_success event
-        UI->>U: Hide progress, show success
+
+    U->>AIGen: Clicks "Generate Design"
+
+    Note over AIGen,RateLimit: Layer 1 Check (Client-side)
+    AIGen->>RateLimit: checkSessionLimit() - localStorage
+    RateLimit->>RateLimit: Read generationCount from localStorage
+
+    alt Session limit exceeded (>5)
+        RateLimit->>AIGen: Layer 1 blocked (5/5 used)
+        AIGen->>U: Show "Moving to IP-based tracking (15/day limit)"
+        AIGen->>GA: Track ai_quota_warning (layer: 1, remaining: 0)
+    end
+
+    Note over API,DB: Layer 2 Check (Server-side - IP)
+    AIGen->>API: POST /api/generate-texture
+    API->>RateLimit: getClientIP() - extract from headers
+    RateLimit->>DB: Query ai_generation_limits WHERE ip={IP} AND date_key={today}
+
+    alt IP limit exceeded (≥15)
+        DB->>API: generation_count = 15
+        API->>AIGen: 429 Error "Daily IP limit reached"
+        AIGen->>U: Show "You've reached 15 generations today. Resets at midnight UTC"
+        AIGen->>GA: Track ai_generation_error (error_type: ip_limit, layer: 2)
+        AIGen->>U: Highlight manual upload fallback option
+    end
+
+    Note over API,DB: Layer 3 Check (Server-side - Global)
+    API->>DB: Query ai_generation_global_counter WHERE date_key={today}
+
+    alt Global limit exceeded (≥1400)
+        DB->>API: total_generations = 1400
+        API->>AIGen: 503 Error "Service at capacity"
+        AIGen->>U: Show "AI generation temporarily unavailable. Resets at midnight UTC (X hours)"
+        AIGen->>GA: Track ai_generation_error (error_type: global_limit, layer: 3)
+        AIGen->>U: Prominently display manual upload option
+    end
+
+    Note over API,GoogleAI: All limits passed - Generate image
+
+    API->>GoogleAI: POST generateImage {prompt, image}
+
+    alt Google AI Studio API fails
+        GoogleAI->>API: Error (network/invalid prompt/content filter)
+        API->>AIGen: Return error details
+        AIGen->>U: Show user-friendly error message
+        AIGen->>GA: Track ai_generation_error (error_type: api_failure)
+    else Generation successful
+        GoogleAI->>API: Return base64 image
+        API->>DB: INCREMENT ip_address generation_count
+        API->>DB: INCREMENT global total_generations
+        API->>AIGen: Return image data URL
+        AIGen->>RateLimit: incrementSessionCounter() - localStorage
+        RateLimit->>AIGen: Update quota display
+        AIGen->>U: Show generated image preview
+        AIGen->>GA: Track ai_generation_success
     end
 ```
+
+**Rate Limiting Thresholds:**
+- **Layer 1 (Session):** 5 generations → triggers IP tracking
+- **Layer 2 (IP):** 15 generations/day → hard block with midnight UTC reset
+- **Layer 3 (Global):** 1,400 generations/day → service-wide block
+
+**User Experience During Limits:**
+- **Warnings at 3/5 (Layer 1):** "2 free generations remaining"
+- **Warning at 13/15 (Layer 2):** "2 generations remaining today"
+- **Global capacity at 1,200:** Admin notification (user sees normal behavior)
+- **All limits show:** Time until reset in user's local timezone
 
 ### Analytics Event Processing Workflow
 
 ```mermaid
 sequenceDiagram
-    participant 3D as 3D Engine
+    participant AIGen as AI Generation Engine
     participant Analytics as Analytics Engine
     participant Queue as Event Queue
     participant API as Analytics API
     participant GA as Google Analytics
     participant DB as Supabase DB
-    
-    3D->>Analytics: User rotates mug (event data)
+
+    AIGen->>Analytics: AI generation success (event data)
     Analytics->>Queue: Add to batch queue
-    
-    Note over Queue: Batch multiple events
-    
+
+    Note over Queue: Batch multiple events (generation, color changes, text edits)
+
     Queue->>API: POST /analytics/events (batch)
     API->>DB: Store events in analytics_events table
     API->>GA: Send custom events via Measurement Protocol
-    
+
     alt Google Analytics fails
         GA->>API: Return error response
         API->>Queue: Retry with exponential backoff
@@ -895,8 +1169,8 @@ sequenceDiagram
         GA->>API: Return success
         API->>Analytics: Confirm batch processed
     end
-    
-    Analytics->>3D: Event tracking complete
+
+    Analytics->>AIGen: Event tracking complete
 ```
 
 ### Error Handling and Recovery Workflow

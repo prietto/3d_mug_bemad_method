@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo, Suspense } from 'react'
 import { Canvas, extend, useLoader } from '@react-three/fiber'
 import { OrbitControls, Environment } from '@react-three/drei'
 import * as THREE from 'three'
+import AITextureGenerator from './3d/AITextureGenerator'
 
 // Create text texture from canvas
 function createTextTexture(text: string, color: string, fontSize: number = 64): THREE.CanvasTexture {
@@ -585,6 +586,13 @@ export default function SimpleMugTest() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* AI Texture Generator Section */}
+      <div style={{ padding: '20px', background: 'white', borderTop: '1px solid #e5e7eb' }}>
+        <AITextureGenerator
+          onGenerationComplete={(url) => setImageUrl(url)}
+        />
       </div>
       </div>
     </div>

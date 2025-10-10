@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom'
 import ImageUpload from './ImageUpload'
 import { useDesignStore } from './store/designStore'
 
@@ -267,6 +268,104 @@ describe('ImageUpload', () => {
     await waitFor(() => {
       expect(mockOnUploadStart).toHaveBeenCalled()
       expect(mockOnUploadComplete).toHaveBeenCalledWith('data:image/png;base64,test-image-data')
+    })
+  })
+})
+
+describe('ImageUpload Mode Support', () => {
+  const mockUpdateDesign = vi.fn()
+  const mockSetBaseImageForEnhancement = vi.fn()
+  const mockOnUploadComplete = vi.fn()
+
+  const defaultDesign = {
+    id: 'test-id',
+    mugColor: '#ffffff',
+    uploadedImageBase64: undefined,
+    customText: undefined,
+    textFont: 'Arial',
+    textPosition: JSON.stringify({ x: 0, y: 0, z: 0 }),
+    createdAt: '2025-09-26T00:00:00.000Z',
+    lastModified: '2025-09-26T00:00:00.000Z',
+    isComplete: false
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFileReader.readAsDataURL = vi.fn()
+    ;(useDesignStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      currentDesign: defaultDesign,
+      updateDesign: mockUpdateDesign,
+      setBaseImageForEnhancement: mockSetBaseImageForEnhancement,
+      trackImageUpload: vi.fn(),
+    })
+
+    // Mock successful upload response
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: async () => ({
+          success: true,
+          url: 'https://example.com/uploaded-image.png'
+        })
+      })
+    ) as unknown as typeof fetch
+  })
+
+  it('should use direct mode by default and update design store', async () => {
+    render(<ImageUpload onUploadComplete={mockOnUploadComplete} />)
+
+    const file = new File(['test'], 'test.png', { type: 'image/png' })
+    const input = screen.getByRole('button', { name: /upload your design/i }).parentElement?.querySelector('input[type="file"]') as HTMLInputElement
+    
+    mockFileReader.readAsDataURL.mockImplementation(() => {
+      mockFileReader.result = 'data:image/png;base64,test-image-data'
+      if (mockFileReader.onload) {
+        mockFileReader.onload({ target: { result: 'data:image/png;base64,test-image-data' } } as any)
+      }
+    })
+
+    Object.defineProperty(input, 'files', {
+      value: [file],
+      writable: false
+    })
+
+    fireEvent.change(input)
+
+    await waitFor(() => {
+      expect(mockUpdateDesign).toHaveBeenCalledWith({
+        uploadedImageBase64: 'data:image/png;base64,test-image-data',
+        uploadedImageUrl: 'https://example.com/uploaded-image.png',
+        lastModified: expect.any(String)
+      })
+      expect(mockOnUploadComplete).toHaveBeenCalledWith('https://example.com/uploaded-image.png')
+      expect(mockSetBaseImageForEnhancement).not.toHaveBeenCalled()
+    })
+  })
+
+  it('should use base mode and store as base image for enhancement', async () => {
+    render(<ImageUpload mode="base" onUploadComplete={mockOnUploadComplete} />)
+
+    const file = new File(['test'], 'test.png', { type: 'image/png' })
+    const input = screen.getByRole('button', { name: /upload your design/i }).parentElement?.querySelector('input[type="file"]') as HTMLInputElement
+    
+    mockFileReader.readAsDataURL.mockImplementation(() => {
+      mockFileReader.result = 'data:image/png;base64,test-image-data'
+      if (mockFileReader.onload) {
+        mockFileReader.onload({ target: { result: 'data:image/png;base64,test-image-data' } } as any)
+      }
+    })
+
+    Object.defineProperty(input, 'files', {
+      value: [file],
+      writable: false
+    })
+
+    fireEvent.change(input)
+
+    await waitFor(() => {
+      expect(mockSetBaseImageForEnhancement).toHaveBeenCalledWith('data:image/png;base64,test-image-data')
+      expect(mockOnUploadComplete).toHaveBeenCalledWith('data:image/png;base64,test-image-data')
+      expect(mockUpdateDesign).not.toHaveBeenCalled()
     })
   })
 })

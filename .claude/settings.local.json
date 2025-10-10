@@ -13,7 +13,16 @@
       "Bash(mkdir:*)",
       "Bash(npm test:*)",
       "Bash(npm run lint)",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm install:*)",
+      "Bash(node:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(cat:*)",
+      "Bash(npx next:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

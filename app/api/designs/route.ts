@@ -1,15 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { CreateDesignRequest, CreateDesignResponse, Design } from '@/lib/types'
-import { 
-  rateLimit, 
-  getClientIdentifier, 
-  getSecurityHeaders, 
+import {
+  rateLimit,
+  getClientIdentifier,
+  getSecurityHeaders,
   getCorsHeaders,
   createRequestTimer,
   logError,
   logInfo
 } from '@/lib/middleware/security'
+
+// Helper function to transform snake_case DB response to camelCase Design
+function dbToDesign(dbRow: any): Design {
+  return {
+    id: dbRow.id,
+    mugColor: dbRow.mug_color,
+    uploadedImageBase64: dbRow.uploaded_image_base64,
+    uploadedImageUrl: dbRow.uploaded_image_url,
+    customText: dbRow.custom_text,
+    textFont: dbRow.text_font,
+    textPosition: dbRow.text_position,
+    textSize: dbRow.text_size,
+    textColor: dbRow.text_color,
+    createdAt: dbRow.created_at,
+    lastModified: dbRow.last_modified,
+    isComplete: dbRow.is_complete
+  }
+}
 
 export async function POST(request: NextRequest) {
   const timer = createRequestTimer()
@@ -90,41 +108,52 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient()
-    
-    // Create design record
-    const designData: Partial<Design> = {
-      id: crypto.randomUUID(),
-      mugColor: body.mugColor,
-      uploadedImageBase64: body.uploadedImageBase64,
-      customText: body.customText,
-      textFont: body.textFont,
-      textPosition: body.textPosition,
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      isComplete: false
+
+    // Create design record with snake_case for database
+    const designId = crypto.randomUUID()
+    const dbDesignData = {
+      id: designId,
+      mug_color: body.mugColor,
+      uploaded_image_base64: body.uploadedImageBase64,
+      custom_text: body.customText,
+      text_font: body.textFont,
+      text_position: body.textPosition,
+      created_at: new Date().toISOString(),
+      last_modified: new Date().toISOString(),
+      is_complete: false
     }
 
     // Add timeout to database operation
     const dbOperation = supabase
       .from('designs')
-      .insert([designData])
+      .insert([dbDesignData])
       .select()
       .single()
 
-    const timeoutPromise = new Promise((_, reject) => {
+    const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Database operation timeout')), 5000)
     })
 
-    const { data, error } = await Promise.race([dbOperation, timeoutPromise]) as any
+    let data: Design | null = null
+    let error: any = null
 
-    if (error) {
-      logError(error, context, { 
+    try {
+      const result = await Promise.race([dbOperation, timeoutPromise])
+      data = result.data
+      error = result.error
+    } catch (err) {
+      // Handle timeout or other Promise.race errors
+      error = err
+    }
+
+    if (error || !data) {
+      logError(error || new Error('No data returned from database'), context, {
         component: 'design_creation',
         designData: { mugColor: body.mugColor, hasImage: !!body.uploadedImageBase64 }
       })
       return NextResponse.json(
         { success: false, error: 'Failed to create design' },
-        { 
+        {
           status: 500,
           headers: {
             ...rateLimitResult.headers,
@@ -136,13 +165,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Transform snake_case DB response to camelCase
+    const designResponse = dbToDesign(data)
+
     const response: CreateDesignResponse = {
       success: true,
-      data: data as Design
+      data: designResponse
     }
 
-    logInfo('Design created successfully', context, { 
-      designId: data.id,
+    logInfo('Design created successfully', context, {
+      designId: designResponse.id,
       mugColor: body.mugColor,
       responseTime: timer.end()
     })
